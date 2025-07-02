@@ -1,0 +1,363 @@
+ =============================================================================
+# STEP 1: Import Required Libraries
+# =============================================================================
+
+import os
+import numpy as np
+import matplotlib.pyplot as plt
+from PIL import Image
+import zipfile
+from sklearn.svm import SVC
+from sklearn.metrics import accuracy_score, classification_report
+from sklearn.model_selection import train_test_split
+import pickle
+from google.colab import files
+import io
+
+print("?? All libraries imported successfully!")
+print("?? Ready to start Cat vs Dog Classification with SVM")
+
+# =============================================================================
+# STEP 2: Upload and Extract Training Dataset
+# =============================================================================
+
+def upload_training_data():
+    """
+    Upload training data folders (train_dog and train_cat)
+    User should upload a ZIP file containing both folders
+    """
+    print("\n?? TRAINING DATA UPLOAD")
+    print("=" * 50)
+    print("Please prepare your training data as follows:")
+    print("1. Create a folder called 'train_dog' with 10 dog images")
+    print("2. Create a folder called 'train_cat' with 10 cat images") 
+    print("3. Compress both folders into a single ZIP file")
+    print("4. Upload the ZIP file when prompted")
+    print("\nSupported image formats: JPG, JPEG, PNG")
+    
+    # Upload ZIP file
+    uploaded = files.upload()
+    
+    # Extract the uploaded ZIP file
+    for filename in uploaded.keys():
+        print(f"?? Extracting {filename}...")
+        with zipfile.ZipFile(filename, 'r') as zip_ref:
+            zip_ref.extractall('training_data')
+        print("? Training data extracted successfully!")
+        break
+    
+    return 'training_data'
+
+def load_training_images(data_path):
+    """
+    Load and preprocess training images from train_dog and train_cat folders
+    """
+    print("\n??? LOADING TRAINING IMAGES")
+    print("=" * 50)
+    
+    # Initialize lists to store images and labels
+    images = []
+    labels = []
+    
+    # Define image size
+    IMG_SIZE = 64
+    
+    # Load dog images (label = 1)
+    dog_path = os.path.join(data_path, 'train_dog')
+    if os.path.exists(dog_path):
+        dog_files = [f for f in os.listdir(dog_path) if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
+        print(f"?? Found {len(dog_files)} dog images")
+        
+        for img_file in dog_files:
+            try:
+                # Load and preprocess image
+                img_path = os.path.join(dog_path, img_file)
+                img = Image.open(img_path)
+                
+                # Convert to RGB if necessary
+                if img.mode != 'RGB':
+                    img = img.convert('RGB')
+                
+                # Resize image
+                img = img.resize((IMG_SIZE, IMG_SIZE))
+                
+                # Convert to numpy array and normalize
+                img_array = np.array(img) / 255.0
+                
+                # Flatten the image (64x64x3 = 12288 features)
+                img_flattened = img_array.flatten()
+                
+                images.append(img_flattened)
+                labels.append(1)  # Dog label
+                
+            except Exception as e:
+                print(f"?? Error loading {img_file}: {e}")
+    
+    # Load cat images (label = 0)
+    cat_path = os.path.join(data_path, 'train_cat')
+    if os.path.exists(cat_path):
+        cat_files = [f for f in os.listdir(cat_path) if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
+        print(f"?? Found {len(cat_files)} cat images")
+        
+        for img_file in cat_files:
+            try:
+                # Load and preprocess image
+                img_path = os.path.join(cat_path, img_file)
+                img = Image.open(img_path)
+                
+                # Convert to RGB if necessary
+                if img.mode != 'RGB':
+                    img = img.convert('RGB')
+                
+                # Resize image
+                img = img.resize((IMG_SIZE, IMG_SIZE))
+                
+                # Convert to numpy array and normalize
+                img_array = np.array(img) / 255.0
+                
+                # Flatten the image
+                img_flattened = img_array.flatten()
+                
+                images.append(img_flattened)
+                labels.append(0)  # Cat label
+                
+            except Exception as e:
+                print(f"?? Error loading {img_file}: {e}")
+    
+    # Convert to numpy arrays
+    X = np.array(images)
+    y = np.array(labels)
+    
+    print(f"? Loaded {len(X)} images total")
+    print(f"?? Feature vector size: {X.shape[1]} (64x64x3 flattened)")
+    print(f"??? Labels: {np.sum(y == 0)} cats, {np.sum(y == 1)} dogs")
+    
+    return X, y
+
+# =============================================================================
+# STEP 3: Train SVM Model
+# =============================================================================
+
+def train_svm_model(X, y):
+    """
+    Train Support Vector Machine model for image classification
+    """
+    print("\n?? TRAINING SVM MODEL")
+    print("=" * 50)
+    
+    # Split data into training and validation sets
+    X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
+    
+    print(f"?? Training set: {len(X_train)} images")
+    print(f"?? Validation set: {len(X_val)} images")
+    
+    # Create and train SVM model
+    print("?? Training SVM with RBF kernel...")
+    svm_model = SVC(kernel='rbf', C=1.0, gamma='scale', random_state=42, probability=True)
+    svm_model.fit(X_train, y_train)
+    
+    # Evaluate model
+    train_pred = svm_model.predict(X_train)
+    val_pred = svm_model.predict(X_val)
+    
+    train_accuracy = accuracy_score(y_train, train_pred)
+    val_accuracy = accuracy_score(y_val, val_pred)
+    
+    print(f"? Training completed!")
+    print(f"?? Training Accuracy: {train_accuracy:.2%}")
+    print(f"?? Validation Accuracy: {val_accuracy:.2%}")
+    
+    # Detailed classification report
+    print("\n?? CLASSIFICATION REPORT")
+    print("=" * 30)
+    target_names = ['Cat', 'Dog']
+    print(classification_report(y_val, val_pred, target_names=target_names))
+    
+    return svm_model
+
+def save_model(model, filename='cat_dog_svm_model.pkl'):
+    """
+    Save the trained model to disk
+    """
+    print(f"\n?? Saving model as {filename}...")
+    with open(filename, 'wb') as f:
+        pickle.dump(model, f)
+    print("? Model saved successfully!")
+
+
+
+def upload_test_image():
+    """
+    Upload a test image for classification
+    """
+    print("\n?? TEST IMAGE UPLOAD")
+    print("=" * 50)
+    print("Please upload a test image (cat or dog) for classification:")
+    
+    uploaded = files.upload()
+    
+    # Get the first uploaded file
+    for filename in uploaded.keys():
+        print(f"?? Uploaded: {filename}")
+        return filename, uploaded[filename]
+
+def preprocess_test_image(image_data):
+    """
+    Preprocess test image same way as training images
+    """
+    # Load image from bytes
+    img = Image.open(io.BytesIO(image_data))
+    
+    # Convert to RGB if necessary
+    if img.mode != 'RGB':
+        img = img.convert('RGB')
+    
+    # Resize to match training data
+    img_resized = img.resize((64, 64))
+    
+    # Convert to numpy array and normalize
+    img_array = np.array(img_resized) / 255.0
+    
+    # Flatten the image
+    img_flattened = img_array.flatten()
+    
+    # Reshape for prediction (1 sample)
+    img_final = img_flattened.reshape(1, -1)
+    
+    return img_final, img_resized
+
+def classify_test_image(model, image_data):
+    """
+    Classify the uploaded test image
+    """
+    print("\n?? CLASSIFYING TEST IMAGE")
+    print("=" * 50)
+    
+    # Preprocess the image
+    processed_img, display_img = preprocess_test_image(image_data)
+    
+    # Make prediction
+    prediction = model.predict(processed_img)[0]
+    prediction_proba = model.predict_proba(processed_img)[0]
+    
+    # Get confidence scores
+    cat_confidence = prediction_proba[0] * 100
+    dog_confidence = prediction_proba[1] * 100
+    
+    # Display the test image
+    plt.figure(figsize=(8, 6))
+    plt.subplot(1, 2, 1)
+    plt.imshow(display_img)
+    plt.title("Test Image", fontsize=14, fontweight='bold')
+    plt.axis('off')
+    
+    # Display prediction results
+    plt.subplot(1, 2, 2)
+    labels = ['Cat ??', 'Dog ??']
+    colors = ['#FF6B6B', '#4ECDC4']
+    confidences = [cat_confidence, dog_confidence]
+    
+    bars = plt.bar(labels, confidences, color=colors, alpha=0.7)
+    plt.title("Prediction Confidence", fontsize=14, fontweight='bold')
+    plt.ylabel("Confidence (%)")
+    plt.ylim(0, 100)
+    
+    # Add percentage labels on bars
+    for bar, conf in zip(bars, confidences):
+        plt.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 1, 
+                f'{conf:.1f}%', ha='center', fontweight='bold')
+    
+    plt.tight_layout()
+    plt.show()
+    
+    # Print final prediction
+    print("\n?? FINAL PREDICTION")
+    print("=" * 30)
+    if prediction == 1:
+        print("?? Predicted: Dog ??")
+        print(f"?? Confidence: {dog_confidence:.1f}%")
+    else:
+        print("?? Predicted: Cat ??")
+        print(f"?? Confidence: {cat_confidence:.1f}%")
+    
+    return prediction
+
+# =============================================================================
+# STEP 5: Main Execution Pipeline
+# =============================================================================
+
+def main():
+    """
+    Main function to execute the complete pipeline
+    """
+    print("?? CAT vs DOG IMAGE CLASSIFIER WITH SVM")
+    print("=" * 60)
+    print("This notebook will help you:")
+    print("1. Upload training data (cat and dog images)")
+    print("2. Train an SVM model")  
+    print("3. Test the model with new images")
+    print("=" * 60)
+    
+    try:
+        # Step 1: Upload and load training data
+        data_path = upload_training_data()
+        X, y = load_training_images(data_path)
+        
+        if len(X) == 0:
+            print("? No training images found! Please check your folder structure.")
+            return
+        
+        # Step 2: Train the model
+        model = train_svm_model(X, y)
+        
+        # Step 3: Save the model (optional)
+        save_model(model)
+        
+        # Step 4: Test the model
+        print("\n" + "="*60)
+        print("?? MODEL TRAINING COMPLETE! Ready for testing...")
+        print("="*60)
+        
+        # Upload and classify test image
+        filename, image_data = upload_test_image()
+        classify_test_image(model, image_data)
+        
+        print("\n? Classification complete!")
+        print("?? You can run the test section again with different images!")
+        
+    except Exception as e:
+        print(f"? An error occurred: {e}")
+        print("Please check your data and try again.")
+
+# =============================================================================
+# STEP 6: Additional Utility Functions
+# =============================================================================
+
+def test_new_image(model):
+    """
+    Function to test additional images after training
+    Call this function to classify more images without retraining
+    """
+    filename, image_data = upload_test_image()
+    classify_test_image(model, image_data)
+
+def load_saved_model(filename='cat_dog_svm_model.pkl'):
+    """
+    Load a previously saved model
+    """
+    try:
+        with open(filename, 'rb') as f:
+            model = pickle.load(f)
+        print(f"? Model loaded from {filename}")
+        return model
+    except FileNotFoundError:
+        print(f"? Model file {filename} not found!")
+        return None
+
+# =============================================================================
+# EXECUTION
+# =============================================================================
+
+if __name__ == "__main__":
+    # Run the main pipeline
+    main()
